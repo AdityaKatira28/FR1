@@ -36,7 +36,7 @@ interface FileUploadProps {
 export const FileUpload: React.FC<FileUploadProps> = ({
   onUploadComplete,
   onUploadError,
-  acceptedFileTypes = ['.csv'],
+  acceptedFileTypes = ['.pdf', '.csv', '.xlsx', '.json', '.txt'],
   maxFileSize = 10, // 10MB default
   maxFiles = 5,
   uploadEndpoint = '/api/v1/compliance/upload'
@@ -316,7 +316,7 @@ xhr.send(formData);
           File Upload
         </CardTitle>
         <CardDescription className="text-slate-400">
-          Upload compliance reports
+          Upload compliance documents, reports, and configuration files
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -334,6 +334,10 @@ xhr.send(formData);
           <Upload className="h-12 w-12 text-slate-400 mx-auto mb-4" />
           <p className="text-white font-medium mb-2">
             Drag and drop files here, or click to select
+          </p>
+          <p className="text-slate-400 text-sm mb-4">
+            Supported formats: {acceptedFileTypes.join(', ')} • Max size: {maxFileSize}MB • Max files: {maxFiles}
+          </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
             variant="outline"
