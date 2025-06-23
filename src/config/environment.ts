@@ -3,7 +3,7 @@ export const ENV = {
   // Local backend URL for development
   API_BASE_URL: process.env.NODE_ENV === 'development' 
     ? 'http://localhost:8000' 
-    : 'https://railway-production-9c73.up.railway.app',
+    : 'https://bc1-8sw9.onrender.com',
   
   // API timeout
   API_TIMEOUT: 10000,

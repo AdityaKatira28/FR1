@@ -271,7 +271,7 @@ export const ComplianceDashboard: React.FC = () => {
   acceptedFileTypes={['.csv', '.json', '.xlsx', '.txt']}
   maxFileSize={10}
   maxFiles={5}
-  uploadEndpoint="https://railway-production-9c73.up.railway.app/api/v1/upload"  
+  uploadEndpoint="https://bc1-8sw9.onrender.com/api/v1/upload"  
 />
     </div>
   );
