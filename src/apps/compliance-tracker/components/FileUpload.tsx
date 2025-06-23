@@ -334,10 +334,6 @@ xhr.send(formData);
           <Upload className="h-12 w-12 text-slate-400 mx-auto mb-4" />
           <p className="text-white font-medium mb-2">
             Drag and drop files here, or click to select
-          </p>
-          <p className="text-slate-400 text-sm mb-4">
-            Supported formats: {acceptedFileTypes.join(', ')} • Max size: {maxFileSize}MB • Max files: {maxFiles}
-          </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
             variant="outline"
