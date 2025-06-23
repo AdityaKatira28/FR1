@@ -2,12 +2,13 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
-import {
-  Upload,
-  File,
-  CheckCircle,
-  XCircle,
-  Loader2,
+import { 
+  Upload, 
+  File, 
+  CheckCircle, 
+  XCircle, 
+  AlertCircle, 
+  Loader2, 
   X,
   FileText,
   FileSpreadsheet
@@ -19,20 +20,28 @@ interface FileUploadItem {
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
+  uploadedUrl?: string;
 }
 
 interface FileUploadProps {
   onUploadComplete?: (files: FileUploadItem[]) => void;
   onUploadError?: (error: string) => void;
+  acceptedFileTypes?: string[];
+  maxFileSize?: number; // in MB
+  maxFiles?: number;
   uploadEndpoint?: string;
 }
 
 export const FileUpload: React.FC<FileUploadProps> = ({
   onUploadComplete,
   onUploadError,
+  acceptedFileTypes = ['.csv'],
+  maxFileSize = 10, // 10MB default
+  maxFiles = 5,
   uploadEndpoint = '/api/v1/compliance/upload'
 }) => {
   const [files, setFiles] = useState<FileUploadItem[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,7 +58,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const getStatusIcon = (status: FileUploadItem['status']) => {
     switch (status) {
       case 'pending':
-        return <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />;
+        return <AlertCircle className="h-4 w-4 text-yellow-400" />;
       case 'uploading':
         return <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />;
       case 'success':
@@ -59,15 +68,31 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
+  const getStatusBadge = (status: FileUploadItem['status']) => {
+    switch (status) {
+      case 'pending':
+        return <Badge className="bg-yellow-900/50 text-yellow-300 text-xs">Pending</Badge>;
+      case 'uploading':
+        return <Badge className="bg-blue-900/50 text-blue-300 text-xs">Uploading</Badge>;
+      case 'success':
+        return <Badge className="bg-green-900/50 text-green-300 text-xs">Uploaded</Badge>;
+      case 'error':
+        return <Badge className="bg-red-900/50 text-red-300 text-xs">Failed</Badge>;
+    }
+  };
+
   const validateFile = (file: File): string | null => {
-    // Only allow .csv files
-    if (!file.name.endsWith('.csv')) {
-      return 'Only CSV files are allowed.';
+    if (file.size > maxFileSize * 1024 * 1024) {
+      return `File size exceeds ${maxFileSize}MB limit`;
     }
 
-    // Max size: 10MB
-    if (file.size > 10 * 1024 * 1024) {
-      return 'File size exceeds 10MB limit.';
+    const fileName = file.name.toLowerCase();
+    const isValidType = acceptedFileTypes.some(type => 
+      fileName.endsWith(type.replace('.', ''))
+    );
+    
+    if (!isValidType) {
+      return `File type not supported. Accepted types: ${acceptedFileTypes.join(', ')}`;
     }
 
     return null;
@@ -75,8 +100,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const fileArray = Array.from(newFiles);
-    const validFiles: FileUploadItem[] = [];
+    
+    if (files.length + fileArray.length > maxFiles) {
+      onUploadError?.(`Maximum ${maxFiles} files allowed`);
+      return;
+    }
 
+    const validFiles: FileUploadItem[] = [];
+    
     fileArray.forEach(file => {
       const error = validateFile(file);
       if (error) {
@@ -84,17 +115,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         return;
       }
 
-      // Avoid duplicates
-      const isDuplicate = files.some(existing =>
-        existing.file.name === file.name && existing.file.size === file.size
+      const isDuplicate = files.some(existingFile => 
+        existingFile.file.name === file.name && 
+        existingFile.file.size === file.size
       );
+
       if (isDuplicate) {
-        onUploadError?.(`File "${file.name}" already added.`);
+        onUploadError?.(`File "${file.name}" already added`);
         return;
       }
 
       validFiles.push({
-        id: `${Date.now()}-${Math.random().substr(2, 9)}`,
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         file,
         progress: 0,
         status: 'pending'
@@ -102,7 +134,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     });
 
     setFiles(prev => [...prev, ...validFiles]);
-  }, [files, onUploadError]);
+  }, [files, maxFiles, onUploadError]);
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(file => file.id !== id));
@@ -112,12 +144,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append('file', fileItem.file);
+      formData.append('type', 'compliance-document');
 
       const xhr = new XMLHttpRequest();
+
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
           const progress = Math.round((event.loaded / event.total) * 100);
-          setFiles(prev => prev.map(f => (f.id === fileItem.id ? { ...f, progress, status: 'uploading' } : f)));
+          setFiles(prev => prev.map(f => 
+            f.id === fileItem.id 
+              ? { ...f, progress, status: 'uploading' as const }
+              : f
+          ));
         }
       });
 
@@ -125,25 +163,38 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const response = JSON.parse(xhr.responseText);
-            setFiles(prev => prev.map(f =>
-              f.id === fileItem.id
-                ? { ...f, progress: 100, status: 'success' }
+            setFiles(prev => prev.map(f => 
+              f.id === fileItem.id 
+                ? { 
+                    ...f, 
+                    progress: 100, 
+                    status: 'success' as const,
+                    uploadedUrl: response.url || response.file_url
+                  }
                 : f
             ));
             resolve();
-          } catch (err) {
-            setFiles(prev => prev.map(f =>
-              f.id === fileItem.id
-                ? { ...f, status: 'error', error: 'Invalid server response' }
+          } catch (error) {
+            setFiles(prev => prev.map(f => 
+              f.id === fileItem.id 
+                ? { 
+                    ...f, 
+                    status: 'error' as const,
+                    error: 'Invalid server response'
+                  }
                 : f
             ));
-            reject(err);
+            reject(new Error('Invalid server response'));
           }
         } else {
           const errorMessage = xhr.responseText || `Upload failed with status ${xhr.status}`;
-          setFiles(prev => prev.map(f =>
-            f.id === fileItem.id
-              ? { ...f, status: 'error', error: errorMessage }
+          setFiles(prev => prev.map(f => 
+            f.id === fileItem.id 
+              ? { 
+                  ...f, 
+                  status: 'error' as const,
+                  error: errorMessage
+                }
               : f
           ));
           reject(new Error(errorMessage));
@@ -151,9 +202,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       });
 
       xhr.addEventListener('error', () => {
-        setFiles(prev => prev.map(f =>
-          f.id === fileItem.id
-            ? { ...f, status: 'error', error: 'Network error occurred' }
+        setFiles(prev => prev.map(f => 
+          f.id === fileItem.id 
+            ? { 
+                ...f, 
+                status: 'error' as const,
+                error: 'Network error occurred'
+              }
             : f
         ));
         reject(new Error('Network error occurred'));
@@ -169,13 +224,34 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     if (pendingFiles.length === 0) return;
 
     setIsUploading(true);
+
     try {
       await Promise.all(pendingFiles.map(uploadFile));
       onUploadComplete?.(files);
     } catch (error) {
-      onUploadError?.(error instanceof Error ? error.message : 'Upload failed.');
+      onUploadError?.(error instanceof Error ? error.message : 'Upload failed');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const droppedFiles = e.dataTransfer.files;
+    if (droppedFiles.length > 0) {
+      addFiles(droppedFiles);
     }
   };
 
@@ -192,7 +268,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB'];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
@@ -202,13 +278,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   };
 
   const retryFailedUploads = () => {
-    setFiles(prev =>
-      prev.map(f =>
-        f.status === 'error'
-          ? { ...f, status: 'pending', error: undefined, progress: 0 }
-          : f
-      )
-    );
+    setFiles(prev => prev.map(f => 
+      f.status === 'error' 
+        ? { ...f, status: 'pending' as const, error: undefined, progress: 0 }
+        : f
+    ));
   };
 
   const successCount = files.filter(f => f.status === 'success').length;
@@ -227,32 +301,43 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* File Input */}
-        <div className="border border-slate-700 rounded-lg p-6 text-center bg-slate-800">
+        <div
+          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+            isDragOver
+              ? 'border-purple-500 bg-purple-900/20'
+              : 'border-slate-700 hover:border-slate-600'
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <Upload className="h-12 w-12 text-slate-400 mx-auto mb-4" />
           <p className="text-slate-400 text-sm mb-4">
-            Supported formats: .csv • Max size: 10MB
+            Supported formats: .csv • Max size: {maxFileSize}MB • Max files: {maxFiles}
           </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
             variant="outline"
             className="bg-slate-800 border-slate-700 text-white hover:bg-slate-700"
           >
-            Select CSV File
+            Select Files
           </Button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".csv"
+            multiple
+            accept={acceptedFileTypes.join(',')}
             onChange={handleFileSelect}
             className="hidden"
           />
         </div>
 
-        {/* File List */}
         {files.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-white font-medium">Files ({files.length})</h4>
+              <h4 className="text-white font-medium">
+                Files ({files.length}/{maxFiles})
+              </h4>
               <div className="flex gap-2">
                 {errorCount > 0 && (
                   <Button
@@ -275,7 +360,26 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               </div>
             </div>
 
-            {/* File Items */}
+            {(successCount > 0 || errorCount > 0) && (
+              <div className="flex gap-2 text-sm">
+                {successCount > 0 && (
+                  <Badge className="bg-green-900/50 text-green-300">
+                    {successCount} Uploaded
+                  </Badge>
+                )}
+                {errorCount > 0 && (
+                  <Badge className="bg-red-900/50 text-red-300">
+                    {errorCount} Failed
+                  </Badge>
+                )}
+                {pendingCount > 0 && (
+                  <Badge className="bg-yellow-900/50 text-yellow-300">
+                    {pendingCount} Pending
+                  </Badge>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {files.map((fileItem) => (
                 <div
@@ -283,6 +387,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                   className="flex items-center gap-3 p-3 bg-slate-800 rounded-lg border border-slate-700"
                 >
                   {getFileIcon(fileItem.file.name)}
+                  
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <p className="text-white text-sm font-medium truncate">
@@ -290,15 +395,17 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                       </p>
                       <div className="flex items-center gap-2">
                         {getStatusIcon(fileItem.status)}
+                        {getStatusBadge(fileItem.status)}
                       </div>
                     </div>
+                    
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>{formatFileSize(fileItem.file.size)}</span>
                       {fileItem.status === 'uploading' && (
                         <span>{fileItem.progress}%</span>
                       )}
                     </div>
-                    {/* Progress Bar */}
+
                     {fileItem.status === 'uploading' && (
                       <div className="w-full bg-slate-700 rounded-full h-1.5 mt-2">
                         <div
@@ -307,17 +414,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                         />
                       </div>
                     )}
-                    {/* Error Message */}
+
                     {fileItem.status === 'error' && fileItem.error && (
                       <p className="text-red-400 text-xs mt-1">{fileItem.error}</p>
                     )}
-                    {/* Success Message */}
+
                     {fileItem.status === 'success' && (
                       <p className="text-green-400 text-xs mt-1">
                         Upload completed successfully
                       </p>
                     )}
                   </div>
+
                   <Button
                     onClick={() => removeFile(fileItem.id)}
                     size="sm"
@@ -330,7 +438,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               ))}
             </div>
 
-            {/* Upload Button */}
             {pendingCount > 0 && (
               <Button
                 onClick={uploadAllFiles}
@@ -340,12 +447,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 {isUploading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Uploading...
+                    Uploading {pendingCount} file{pendingCount > 1 ? 's' : ''}...
                   </>
                 ) : (
                   <>
                     <Upload className="h-4 w-4 mr-2" />
-                    Upload File
+                    Upload {pendingCount} file{pendingCount > 1 ? 's' : ''}
                   </>
                 )}
               </Button>
