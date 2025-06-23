@@ -316,7 +316,7 @@ xhr.send(formData);
           File Upload
         </CardTitle>
         <CardDescription className="text-slate-400">
-          Upload compliance documents, reports, and configuration files
+          Upload compliance reports
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -336,7 +336,7 @@ xhr.send(formData);
             Drag and drop files here, or click to select
           </p>
           <p className="text-slate-400 text-sm mb-4">
-            Supported formats: {acceptedFileTypes.join(', ')} • Max size: {maxFileSize}MB • Max files: {maxFiles}
+           Max size: {maxFileSize}MB
           </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
