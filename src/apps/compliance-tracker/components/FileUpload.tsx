@@ -11,7 +11,8 @@ import {
   Loader2, 
   X,
   FileText,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileImage
 } from 'lucide-react';
 
 interface FileUploadItem {
@@ -48,8 +49,17 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const getFileIcon = (fileName: string) => {
     const extension = fileName.toLowerCase().split('.').pop();
     switch (extension) {
+      case 'pdf':
+        return <FileText className="h-5 w-5 text-red-400" />;
       case 'csv':
+      case 'xlsx':
+      case 'xls':
         return <FileSpreadsheet className="h-5 w-5 text-green-400" />;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return <FileImage className="h-5 w-5 text-blue-400" />;
       default:
         return <File className="h-5 w-5 text-slate-400" />;
     }
@@ -82,10 +92,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   };
 
   const validateFile = (file: File): string | null => {
+    // Check file size
     if (file.size > maxFileSize * 1024 * 1024) {
       return `File size exceeds ${maxFileSize}MB limit`;
     }
 
+    // Check file type
     const fileName = file.name.toLowerCase();
     const isValidType = acceptedFileTypes.some(type => 
       fileName.endsWith(type.replace('.', ''))
@@ -101,6 +113,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const fileArray = Array.from(newFiles);
     
+    // Check max files limit
     if (files.length + fileArray.length > maxFiles) {
       onUploadError?.(`Maximum ${maxFiles} files allowed`);
       return;
@@ -115,6 +128,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         return;
       }
 
+      // Check for duplicates
       const isDuplicate = files.some(existingFile => 
         existingFile.file.name === file.name && 
         existingFile.file.size === file.size
@@ -214,8 +228,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         reject(new Error('Network error occurred'));
       });
 
-      xhr.open('POST', uploadEndpoint);
-      xhr.send(formData);
+    // Add debug logging
+console.log('🚀 Uploading to:', uploadEndpoint);
+console.log('📁 File:', fileItem.file.name, fileItem.file.size, 'bytes');
+
+xhr.open('POST', uploadEndpoint);
+xhr.send(formData);
     });
   };
 
@@ -260,6 +278,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     if (selectedFiles && selectedFiles.length > 0) {
       addFiles(selectedFiles);
     }
+    // Reset input value to allow selecting the same file again
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -301,6 +320,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Upload Area */}
         <div
           className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
             isDragOver
@@ -312,8 +332,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           onDrop={handleDrop}
         >
           <Upload className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+          <p className="text-white font-medium mb-2">
+            Drag and drop files here, or click to select
+          </p>
           <p className="text-slate-400 text-sm mb-4">
-            Supported formats: .csv • Max size: {maxFileSize}MB • Max files: {maxFiles}
+            Supported formats: {acceptedFileTypes.join(', ')} • Max size: {maxFileSize}MB • Max files: {maxFiles}
           </p>
           <Button
             onClick={() => fileInputRef.current?.click()}
@@ -332,6 +355,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           />
         </div>
 
+        {/* File List */}
         {files.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -360,6 +384,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               </div>
             </div>
 
+            {/* Status Summary */}
             {(successCount > 0 || errorCount > 0) && (
               <div className="flex gap-2 text-sm">
                 {successCount > 0 && (
@@ -380,6 +405,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               </div>
             )}
 
+            {/* File Items */}
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {files.map((fileItem) => (
                 <div
@@ -406,6 +432,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                       )}
                     </div>
 
+                    {/* Progress Bar */}
                     {fileItem.status === 'uploading' && (
                       <div className="w-full bg-slate-700 rounded-full h-1.5 mt-2">
                         <div
@@ -415,10 +442,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                       </div>
                     )}
 
+                    {/* Error Message */}
                     {fileItem.status === 'error' && fileItem.error && (
                       <p className="text-red-400 text-xs mt-1">{fileItem.error}</p>
                     )}
 
+                    {/* Success Message */}
                     {fileItem.status === 'success' && (
                       <p className="text-green-400 text-xs mt-1">
                         Upload completed successfully
@@ -438,6 +467,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               ))}
             </div>
 
+            {/* Upload Button */}
             {pendingCount > 0 && (
               <Button
                 onClick={uploadAllFiles}
@@ -463,3 +493,4 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     </Card>
   );
 };
+
